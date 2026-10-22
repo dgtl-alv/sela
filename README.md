@@ -13,7 +13,7 @@ Legacy `x.service.tag.his` suspect bypass is not present. Odoo policy errors fai
 3. Configure Turnstile test keys only outside production, a valid GTM container, Odoo URL/database, `ODOO_CREDENTIAL_ENCRYPTION_KEY`, SharePoint host allowlist, and scanner. Each user stores own emica credential.
 4. Run `docker compose up --build`. Open `http://localhost:8080`; probes are `/healthz` and `/readyz`.
 
-`SCANNER_MODE=development` runs format validators without malware scanning and is accepted only outside production. Production requires `SCANNER_MODE=remote` and HTTPS `SCANNER_URL`; scanner outage fails readiness and jobs fail closed.
+`SCANNER_MODE=development` runs format validators without malware scanning and is accepted only outside production. Remote mode requires `SCANNER_TOKEN`; requests to `SCANNER_URL` use Bearer authentication. Production requires `SCANNER_MODE=remote`, HTTPS `SCANNER_URL`, and a non-placeholder token; scanner outage fails readiness and jobs fail closed. Compose connects web and worker to the external `${SCANNER_NETWORK:-scanner_private}` network as clients; it does not run a dedicated scanner or clamd.
 
 ## Database migrations
 

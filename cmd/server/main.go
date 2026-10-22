@@ -48,7 +48,7 @@ func run(ctx context.Context) error {
 	ts := &turnstile.Verifier{Secret: cfg.TurnstileSecretKey, URL: cfg.TurnstileVerifyURL, Hostnames: cfg.TurnstileHostnames, Client: &http.Client{Timeout: 5 * time.Second}}
 	var scanner upload.Scanner = upload.DevelopmentScanner{}
 	if cfg.ScannerMode == "remote" {
-		scanner = upload.RemoteScanner{URL: cfg.ScannerURL, Client: &http.Client{Timeout: 30 * time.Second}}
+		scanner = upload.RemoteScanner{URL: cfg.ScannerURL, Token: cfg.ScannerToken, Client: &http.Client{Timeout: 30 * time.Second}}
 	}
 	st := &store.Store{DB: pool}
 	ready := func(ctx context.Context) error {

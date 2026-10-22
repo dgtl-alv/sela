@@ -47,9 +47,20 @@ func TestOdooCredentialEncryptionKeyRequiresExactly32Bytes(t *testing.T) {
 	}
 }
 
+func TestRemoteScannerRequiresToken(t *testing.T) {
+	_, err := Load(env(map[string]string{
+		"APPLICATION_ID": "sela",
+		"SCANNER_MODE":   "remote",
+		"SCANNER_URL":    "https://scanner.internal",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "SCANNER_TOKEN") {
+		t.Fatalf("remote scanner without token error=%v", err)
+	}
+}
+
 func TestProductionAcceptsSafeConfiguration(t *testing.T) {
 	key := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", 32)))
-	v := map[string]string{"APP_ENV": "production", "APP_NAME": "SELA", "APPLICATION_ID": "sela", "DATABASE_URL": "postgres://app:password@db/sela?sslmode=verify-full&application_name=sela", "PUBLIC_URL": "https://sela.internal", "GTM_CONTAINER_ID": "GTM-ABC123", "SESSION_HASH_KEY": key, "PAT_HASH_KEY": key, "WEBHOOK_ENCRYPTION_KEY": key, "ODOO_CREDENTIAL_ENCRYPTION_KEY": key, "ENTRA_TENANT_ID": "tenant-id", "ENTRA_CLIENT_ID": "client-id", "ENTRA_CLIENT_SECRET": "strong-client-secret", "ENTRA_ISSUER": "https://login.microsoftonline.com/tenant-id/v2.0", "ENTRA_AUTH_URL": "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/authorize", "ENTRA_TOKEN_URL": "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token", "ENTRA_JWKS_URL": "https://login.microsoftonline.com/tenant-id/discovery/v2.0/keys", "TURNSTILE_SITE_KEY": "site-production-key", "TURNSTILE_SECRET_KEY": "secret-production-key", "TURNSTILE_EXPECTED_HOSTNAMES": "sela.internal", "ODOO_URL": "https://odoo.internal", "ODOO_DB": "odoo", "ODOO_USERNAME": "service-account", "ODOO_API_KEY": "strong-api-key", "SHAREPOINT_ALLOWED_HOSTS": "tenant.sharepoint.com", "SCANNER_MODE": "remote", "SCANNER_URL": "https://scanner.internal"}
+	v := map[string]string{"APP_ENV": "production", "APP_NAME": "SELA", "APPLICATION_ID": "sela", "DATABASE_URL": "postgres://app:password@db/sela?sslmode=verify-full&application_name=sela", "PUBLIC_URL": "https://sela.internal", "GTM_CONTAINER_ID": "GTM-ABC123", "SESSION_HASH_KEY": key, "PAT_HASH_KEY": key, "WEBHOOK_ENCRYPTION_KEY": key, "ODOO_CREDENTIAL_ENCRYPTION_KEY": key, "ENTRA_TENANT_ID": "tenant-id", "ENTRA_CLIENT_ID": "client-id", "ENTRA_CLIENT_SECRET": "strong-client-secret", "ENTRA_ISSUER": "https://login.microsoftonline.com/tenant-id/v2.0", "ENTRA_AUTH_URL": "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/authorize", "ENTRA_TOKEN_URL": "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token", "ENTRA_JWKS_URL": "https://login.microsoftonline.com/tenant-id/discovery/v2.0/keys", "TURNSTILE_SITE_KEY": "site-production-key", "TURNSTILE_SECRET_KEY": "secret-production-key", "TURNSTILE_EXPECTED_HOSTNAMES": "sela.internal", "ODOO_URL": "https://odoo.internal", "ODOO_DB": "odoo", "ODOO_USERNAME": "service-account", "ODOO_API_KEY": "strong-api-key", "SHAREPOINT_ALLOWED_HOSTS": "tenant.sharepoint.com", "SCANNER_MODE": "remote", "SCANNER_URL": "https://scanner.internal", "SCANNER_TOKEN": "strong-scanner-token"}
 	c, e := Load(env(v))
 	if e != nil {
 		t.Fatal(e)
@@ -58,6 +69,15 @@ func TestProductionAcceptsSafeConfiguration(t *testing.T) {
 		t.Fatal("scanner mode")
 	}
 }
+func TestProductionRejectsPlaceholderScannerToken(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", 32)))
+	v := map[string]string{"APP_ENV": "production", "APP_NAME": "SELA", "APPLICATION_ID": "sela", "DATABASE_URL": "postgres://app:strong-db-password@db/sela?sslmode=verify-full&application_name=sela", "PUBLIC_URL": "https://sela.internal", "GTM_CONTAINER_ID": "GTM-ABC123", "SESSION_HASH_KEY": key, "PAT_HASH_KEY": key, "WEBHOOK_ENCRYPTION_KEY": key, "ODOO_CREDENTIAL_ENCRYPTION_KEY": key, "ENTRA_TENANT_ID": "tenant-id", "ENTRA_CLIENT_ID": "client-id", "ENTRA_CLIENT_SECRET": "strong-client-secret", "ENTRA_ISSUER": "https://login.microsoftonline.com/tenant-id/v2.0", "ENTRA_AUTH_URL": "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/authorize", "ENTRA_TOKEN_URL": "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token", "ENTRA_JWKS_URL": "https://login.microsoftonline.com/tenant-id/discovery/v2.0/keys", "TURNSTILE_SITE_KEY": "site-production-key", "TURNSTILE_SECRET_KEY": "secret-production-key", "TURNSTILE_EXPECTED_HOSTNAMES": "sela.internal", "ODOO_URL": "https://odoo.internal", "ODOO_DB": "odoo", "SHAREPOINT_ALLOWED_HOSTS": "tenant.sharepoint.com", "SCANNER_MODE": "remote", "SCANNER_URL": "https://scanner.internal", "SCANNER_TOKEN": "replace-me"}
+	_, err := Load(env(v))
+	if err == nil || !strings.Contains(err.Error(), "SCANNER_TOKEN") {
+		t.Fatalf("placeholder scanner token error=%v", err)
+	}
+}
+
 func TestProductionRejectsHTTPAndTestConfig(t *testing.T) {
 	key := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", 32)))
 	v := map[string]string{"APP_ENV": "production", "APPLICATION_ID": "sela", "SESSION_HASH_KEY": key, "PAT_HASH_KEY": key, "WEBHOOK_ENCRYPTION_KEY": key, "ODOO_CREDENTIAL_ENCRYPTION_KEY": key, "ODOO_URL": "http://odoo.internal"}

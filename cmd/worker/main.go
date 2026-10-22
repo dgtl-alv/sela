@@ -47,7 +47,7 @@ func run(ctx context.Context) error {
 	}
 	var scanner upload.Scanner = upload.DevelopmentScanner{}
 	if cfg.ScannerMode == "remote" {
-		scanner = upload.RemoteScanner{URL: cfg.ScannerURL, Client: &http.Client{Timeout: 30 * time.Second}}
+		scanner = upload.RemoteScanner{URL: cfg.ScannerURL, Token: cfg.ScannerToken, Client: &http.Client{Timeout: 30 * time.Second}}
 	}
 	s := store.Store{DB: pool}
 	worker, e := secure.Random(12)

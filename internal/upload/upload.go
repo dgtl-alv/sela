@@ -46,19 +46,38 @@ func (DevelopmentScanner) Scan(context.Context, string) (ScanResult, error) {
 }
 
 type RemoteScanner struct {
-	URL    string
-	Client *http.Client
+	URL, Token string
+	Client     *http.Client
+}
+
+func (s RemoteScanner) authorize(req *http.Request) {
+	req.Header.Set("Authorization", "Bearer "+s.Token)
+}
+
+func (s RemoteScanner) do(req *http.Request) (*http.Response, error) {
+	client := *s.Client
+	client.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return client.Do(req)
 }
 
 func (s RemoteScanner) Ready(ctx context.Context) error {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.URL+"/readyz", nil)
-	res, e := s.Client.Do(req)
+	s.authorize(req)
+	res, e := s.do(req)
 	if e != nil {
 		return e
 	}
 	defer res.Body.Close()
-	if res.StatusCode != 200 {
+	if res.StatusCode != http.StatusOK {
 		return errors.New("scanner unavailable")
+	}
+	if _, ok := strictHeader(res.Header, "X-Scanner-Engine", 80); !ok {
+		return errors.New("scanner returned invalid engine")
+	}
+	if _, ok := strictHeader(res.Header, "X-Scanner-Version", 80); !ok {
+		return errors.New("scanner returned invalid version")
 	}
 	return nil
 }
@@ -68,21 +87,54 @@ func (s RemoteScanner) Scan(ctx context.Context, path string) (ScanResult, error
 		return ScanResult{}, e
 	}
 	defer f.Close()
-	req, e := http.NewRequestWithContext(ctx, http.MethodPost, s.URL+"/scan", io.LimitReader(f, MaxFileBytes+1))
+	info, e := f.Stat()
 	if e != nil {
 		return ScanResult{}, e
 	}
+	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > MaxFileBytes {
+		return ScanResult{}, errors.New("scanner input outside allowed range")
+	}
+	req, e := http.NewRequestWithContext(ctx, http.MethodPost, s.URL+"/scan", f)
+	if e != nil {
+		return ScanResult{}, e
+	}
+	req.ContentLength = info.Size()
 	req.Header.Set("Content-Type", "application/octet-stream")
-	res, e := s.Client.Do(req)
+	s.authorize(req)
+	res, e := s.do(req)
 	if e != nil {
 		return ScanResult{}, e
 	}
 	defer res.Body.Close()
-	if res.StatusCode != 200 {
+	if res.StatusCode != http.StatusOK {
 		return ScanResult{}, errors.New("scanner rejected request")
 	}
-	clean := res.Header.Get("X-Scan-Result") == "clean"
-	return ScanResult{Clean: clean, Engine: bounded(res.Header.Get("X-Scanner-Engine"), 80), Version: bounded(res.Header.Get("X-Scanner-Version"), 80)}, nil
+	body, e := io.ReadAll(io.LimitReader(res.Body, 1025))
+	if e != nil || len(body) > 1024 {
+		return ScanResult{}, errors.New("scanner response exceeds limit")
+	}
+	result, ok := strictHeader(res.Header, "X-Scan-Result", 8)
+	if !ok || (result != "clean" && result != "infected") {
+		return ScanResult{}, errors.New("scanner returned invalid result")
+	}
+	engine, ok := strictHeader(res.Header, "X-Scanner-Engine", 80)
+	if !ok {
+		return ScanResult{}, errors.New("scanner returned invalid engine")
+	}
+	version, ok := strictHeader(res.Header, "X-Scanner-Version", 80)
+	if !ok {
+		return ScanResult{}, errors.New("scanner returned invalid version")
+	}
+	return ScanResult{Clean: result == "clean", Engine: engine, Version: version}, nil
+}
+
+func strictHeader(header http.Header, name string, limit int) (string, bool) {
+	values := header.Values(name)
+	returnValue := ""
+	if len(values) == 1 {
+		returnValue = values[0]
+	}
+	return returnValue, len(values) == 1 && returnValue != "" && len(returnValue) <= limit && strings.TrimSpace(returnValue) == returnValue
 }
 
 func Ingest(root string, part *multipart.Part) (File, error) {
@@ -204,12 +256,6 @@ func contains(a []string, x string) bool {
 		}
 	}
 	return false
-}
-func bounded(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
-	}
-	return s
 }
 func MagicFixture(typ string) []byte {
 	switch typ {

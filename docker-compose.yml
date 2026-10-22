@@ -11,6 +11,7 @@ x-app: &app
     QUARANTINE_DIR: /var/lib/sela/quarantine
   depends_on:
     db: {condition: service_healthy}
+  networks: [default, scanner]
   volumes: [quarantine:/var/lib/sela]
   read_only: true
   tmpfs: [/tmp:size=64m,noexec,nosuid]
@@ -45,6 +46,10 @@ services:
     deploy:
       resources:
         limits: {cpus: '1.0', memory: 1G}
+networks:
+  scanner:
+    external: true
+    name: ${SCANNER_NETWORK:-scanner_private}
 volumes:
   postgres_data:
   quarantine:

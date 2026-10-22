@@ -26,7 +26,7 @@ type Config struct {
 	TurnstileEnabled                                                                                        bool
 	OdooURL, OdooDB                                                                                         string
 	SharePointHosts                                                                                         []string
-	QuarantineDir, ScannerMode, ScannerURL                                                                  string
+	QuarantineDir, ScannerMode, ScannerURL, ScannerToken                                                    string
 	SessionIdle, SessionAbsolute                                                                            time.Duration
 }
 
@@ -75,7 +75,7 @@ func Load(getenv func(string) string) (Config, error) {
 		TurnstileVerifyURL: valueOr(getenv("TURNSTILE_VERIFY_URL"), "https://challenges.cloudflare.com/turnstile/v0/siteverify"), TurnstileEnabled: turnstileEnabled,
 		OdooURL: getenv("ODOO_URL"), OdooDB: getenv("ODOO_DB"),
 		SharePointHosts: split(getenv("SHAREPOINT_ALLOWED_HOSTS")), QuarantineDir: valueOr(getenv("QUARANTINE_DIR"), "/var/lib/sela/quarantine"),
-		ScannerMode: valueOr(getenv("SCANNER_MODE"), "development"), ScannerURL: getenv("SCANNER_URL"), SessionIdle: 12 * time.Hour, SessionAbsolute: 12 * time.Hour,
+		ScannerMode: valueOr(getenv("SCANNER_MODE"), "development"), ScannerURL: getenv("SCANNER_URL"), ScannerToken: getenv("SCANNER_TOKEN"), SessionIdle: 12 * time.Hour, SessionAbsolute: 12 * time.Hour,
 	}
 	if !applicationIDPattern.MatchString(cfg.ApplicationID) {
 		return Config{}, errors.New("APPLICATION_ID must use lowercase letters, numbers, and hyphens")
@@ -85,6 +85,9 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if _, err := strconv.Atoi(cfg.Port); err != nil {
 		return Config{}, errors.New("PORT must be numeric")
+	}
+	if cfg.ScannerMode == "remote" && strings.TrimSpace(cfg.ScannerToken) == "" {
+		return Config{}, errors.New("SCANNER_TOKEN is required when SCANNER_MODE=remote")
 	}
 	if cfg.Environment == "production" {
 		if err := validateProduction(cfg); err != nil {
@@ -139,6 +142,9 @@ func validateProduction(c Config) error {
 	}
 	if c.ScannerMode != "remote" {
 		return errors.New("SCANNER_MODE must be remote in production")
+	}
+	if placeholder(c.ScannerToken) {
+		return errors.New("SCANNER_TOKEN is missing or placeholder")
 	}
 	if len(c.SharePointHosts) == 0 {
 		return errors.New("SHAREPOINT_ALLOWED_HOSTS is required")
