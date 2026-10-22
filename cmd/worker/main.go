@@ -241,9 +241,12 @@ func process(ctx context.Context, cfg config.Config, s store.Store, od *odoo.Cli
 	}
 	if err != nil {
 		if errors.Is(err, odoo.ErrTargetNotFound) {
-			return s.TransitionUpload(ctx, j.ID, j.ClaimToken, j.Status, "failed", "", "", "", "Odoo target not found", nil, 0)
+			return s.TransitionUploadWithEvent(ctx, j.ID, j.ClaimToken, j.Status, "failed", "", "", "", "Target EMICA tidak ditemukan", nil, 0, "evidence.upload.failed.v1", map[string]any{"upload_id": j.ID, "reason": "target_not_found"})
 		}
-		return s.TransitionUpload(ctx, j.ID, j.ClaimToken, j.Status, "processing", "", "", "", "Odoo temporarily unavailable", nil, time.Minute)
+		if errors.Is(err, odoo.ErrSuspectMasalahRequired) {
+			return s.TransitionUploadWithEvent(ctx, j.ID, j.ClaimToken, j.Status, "failed", "", "", "", err.Error(), nil, 0, "evidence.upload.failed.v1", map[string]any{"upload_id": j.ID, "reason": "suspect_masalah_required"})
+		}
+		return s.TransitionUpload(ctx, j.ID, j.ClaimToken, j.Status, "processing", "", "", "", "EMICA temporarily unavailable", nil, time.Minute)
 	}
 	if ev == nil {
 		return s.TransitionUpload(ctx, j.ID, j.ClaimToken, j.Status, "reconciling", "", "", "", "evidence pending reconciliation", nil, time.Minute)

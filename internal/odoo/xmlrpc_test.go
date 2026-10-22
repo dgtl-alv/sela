@@ -3,6 +3,7 @@ package odoo
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -112,5 +113,36 @@ func TestEvidenceMatchesOdooNormalizedOperationID(t *testing.T) {
 	}
 	if evidenceMatchesOperation(liveName, "") {
 		t.Fatal("empty operation ID was matched")
+	}
+}
+
+func TestUploadRejectsMissingSuspectMasalahBeforeWrite(t *testing.T) {
+	wrote := false
+	calls := 0
+	client, err := New(Config{URL: "https://odoo.test", DB: "d", Username: "user", APIKey: "secret"}, &http.Client{Transport: rt(func(r *http.Request) (*http.Response, error) {
+		calls++
+		bodyBytes, _ := io.ReadAll(r.Body)
+		body := string(bodyBytes)
+		response := `<int>7</int>`
+		if calls > 1 {
+			if strings.Contains(body, "<string>write</string>") {
+				wrote = true
+				response = `<boolean>1</boolean>`
+			} else {
+				response = `<array><data><value><struct><member><name>id</name><value><int>62652</int></value></member><member><name>name</name><value><string>SD/TEST</string></value></member><member><name>fleet_suspect_masalah</name><value><boolean>0</boolean></value></member><member><name>fleet_link_ids</name><value><array><data></data></array></value></member></struct></value></data></array>`
+			}
+		}
+		xmlBody := `<?xml version="1.0"?><methodResponse><params><param><value>` + response + `</value></param></params></methodResponse>`
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(xmlBody)), Header: http.Header{}}, nil
+	})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Upload(context.Background(), 62652, "operation-id", "evidence.jpg", []byte("jpeg"))
+	if !errors.Is(err, ErrSuspectMasalahRequired) {
+		t.Fatalf("error=%v", err)
+	}
+	if wrote {
+		t.Fatal("write called despite missing Suspect Masalah")
 	}
 }

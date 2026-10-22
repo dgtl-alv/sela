@@ -193,6 +193,8 @@ type pageData struct {
 	Services                                                 []odoo.Service
 	Service                                                  *odoo.Service
 	Evidence                                                 []odoo.Evidence
+	Uploads                                                  []store.UploadJob
+	RefreshUploads                                           bool
 	Message, Error                                           string
 	Users                                                    []store.User
 	CredentialUsername, CredentialAuthMode                   string
@@ -469,7 +471,25 @@ func (a *App) service(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := principal(r)
-	a.render(w, r, "service", pageData{Title: s.Name, Principal: &p, Service: s, Evidence: ev})
+	jobs, jobsErr := a.d.Store.RecentUploads(r.Context(), p.UserID, id, 10)
+	if jobsErr != nil {
+		a.renderError(w, r, 500, "Status unggahan tidak dapat dimuat")
+		return
+	}
+	refresh := false
+	for _, job := range jobs {
+		if job.Status == "pending" || job.Status == "scanning" || job.Status == "processing" || job.Status == "reconciling" {
+			refresh = true
+		}
+	}
+	message := ""
+	if queued := r.URL.Query().Get("queued"); queued != "" {
+		message = queued + " file berhasil diantrikan. Status dipantau di bawah."
+	}
+	if refresh {
+		w.Header().Set("Refresh", "5")
+	}
+	a.render(w, r, "service", pageData{Title: s.Name, Principal: &p, Service: s, Evidence: ev, Uploads: jobs, RefreshUploads: refresh, Message: message})
 }
 func (a *App) browserUpload(w http.ResponseWriter, r *http.Request) {
 	if !sameOrigin(r, a.cfg.PublicURL) {
@@ -497,6 +517,10 @@ func (a *App) browserUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	if target == nil {
 		a.renderError(w, r, 404, "Target tidak ditemukan")
+		return
+	}
+	if !target.SuspectMasalahReady {
+		a.renderError(w, r, 409, "Suspect Masalah wajib diisi di EMICA sebelum upload evidence")
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, upload.MaxRequestBytes)
@@ -925,8 +949,17 @@ func (a *App) apiUpload(w http.ResponseWriter, r *http.Request) {
 		a.apiErr(w, r, 400, "invalid_id", "Invalid service ID", nil)
 		return
 	}
-	if s, _ := a.d.Odoo.Read(r.Context(), id); s == nil {
+	target, targetErr := a.d.Odoo.Read(r.Context(), id)
+	if targetErr != nil {
+		a.apiErr(w, r, 502, "upstream_error", "Service unavailable", nil)
+		return
+	}
+	if target == nil {
 		a.apiErr(w, r, 404, "not_found", "Service not found", nil)
+		return
+	}
+	if !target.SuspectMasalahReady {
+		a.apiErr(w, r, 409, "suspect_masalah_required", "Suspect Masalah must be completed in EMICA before evidence upload", nil)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, upload.MaxFileBytes+(1<<20))

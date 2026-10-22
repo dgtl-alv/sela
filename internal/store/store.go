@@ -62,7 +62,7 @@ type UploadJob struct {
 	Size                                        int64
 	SHA256                                      []byte
 	EvidenceID                                  *int64
-	EvidenceURL                                 string
+	EvidenceURL, LastError                      string
 	Attempts                                    int
 	CreatedAt, UpdatedAt                        time.Time
 }
@@ -450,8 +450,27 @@ func (s Store) AddUpload(ctx context.Context, j UploadJob) error {
 }
 func (s Store) Upload(ctx context.Context, id, user string) (UploadJob, error) {
 	var j UploadJob
-	err := s.q(ctx).QueryRow(ctx, `SELECT id,user_id,diagnose_id,display_name,storage_key,media_type,byte_size,sha256,status,coalesce(scanner_engine,''),coalesce(scanner_version,''),evidence_id,coalesce(evidence_url,''),external_operation_id,attempts,created_at,updated_at FROM upload_jobs WHERE id=$1 AND user_id=$2`, id, user).Scan(&j.ID, &j.UserID, &j.DiagnoseID, &j.DisplayName, &j.StorageKey, &j.MediaType, &j.Size, &j.SHA256, &j.Status, &j.ScannerEngine, &j.ScannerVersion, &j.EvidenceID, &j.EvidenceURL, &j.ExternalOperationID, &j.Attempts, &j.CreatedAt, &j.UpdatedAt)
+	err := s.q(ctx).QueryRow(ctx, `SELECT id,user_id,diagnose_id,display_name,storage_key,media_type,byte_size,sha256,status,coalesce(scanner_engine,''),coalesce(scanner_version,''),evidence_id,coalesce(evidence_url,''),coalesce(last_error,''),external_operation_id,attempts,created_at,updated_at FROM upload_jobs WHERE id=$1 AND user_id=$2`, id, user).Scan(&j.ID, &j.UserID, &j.DiagnoseID, &j.DisplayName, &j.StorageKey, &j.MediaType, &j.Size, &j.SHA256, &j.Status, &j.ScannerEngine, &j.ScannerVersion, &j.EvidenceID, &j.EvidenceURL, &j.LastError, &j.ExternalOperationID, &j.Attempts, &j.CreatedAt, &j.UpdatedAt)
 	return j, err
+}
+func (s Store) RecentUploads(ctx context.Context, user string, diagnoseID int64, limit int) ([]UploadJob, error) {
+	if limit < 1 || limit > 20 {
+		limit = 10
+	}
+	rows, err := s.q(ctx).Query(ctx, `SELECT id,user_id,diagnose_id,display_name,media_type,byte_size,status,coalesce(last_error,''),evidence_id,coalesce(evidence_url,''),attempts,created_at,updated_at FROM upload_jobs WHERE user_id=$1 AND diagnose_id=$2 ORDER BY created_at DESC LIMIT $3`, user, diagnoseID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UploadJob{}
+	for rows.Next() {
+		var j UploadJob
+		if err := rows.Scan(&j.ID, &j.UserID, &j.DiagnoseID, &j.DisplayName, &j.MediaType, &j.Size, &j.Status, &j.LastError, &j.EvidenceID, &j.EvidenceURL, &j.Attempts, &j.CreatedAt, &j.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, j)
+	}
+	return items, rows.Err()
 }
 func (s Store) ClaimUpload(ctx context.Context) (UploadJob, error) {
 	token, err := secure.UUID()

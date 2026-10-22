@@ -48,14 +48,15 @@ type Client struct {
 	uid  int
 }
 type Service struct {
-	ID            int64  `json:"id"`
-	Name          string `json:"name"`
-	Customer      string `json:"customer,omitempty"`
-	VIN           string `json:"vin,omitempty"`
-	Location      string `json:"location,omitempty"`
-	State         string `json:"state,omitempty"`
-	EvidenceCount int    `json:"evidence_count"`
-	BookingID     int64  `json:"-"`
+	ID                  int64  `json:"id"`
+	Name                string `json:"name"`
+	Customer            string `json:"customer,omitempty"`
+	VIN                 string `json:"vin,omitempty"`
+	Location            string `json:"location,omitempty"`
+	State               string `json:"state,omitempty"`
+	EvidenceCount       int    `json:"evidence_count"`
+	SuspectMasalahReady bool   `json:"suspect_masalah_ready"`
+	BookingID           int64  `json:"-"`
 }
 type Evidence struct {
 	ID   int64  `json:"id"`
@@ -93,7 +94,7 @@ func (c *Client) Search(ctx context.Context, q string, limit int) ([]Service, er
 	if len(bookingIDs) > 0 {
 		domain = []Value{"|", []Value{"name", "ilike", q}, []Value{"x_service_booking_id", "in", bookingIDs}}
 	}
-	v, e := c.execute(ctx, "fleet.diagnose", "search_read", []Value{domain}, map[string]Value{"fields": []Value{"id", "name", "x_service_booking_id", "contact_name", "x_vin_number", "fleet_link_ids"}, "limit": limit, "order": "id desc"})
+	v, e := c.execute(ctx, "fleet.diagnose", "search_read", []Value{domain}, map[string]Value{"fields": []Value{"id", "name", "x_service_booking_id", "contact_name", "x_vin_number", "fleet_link_ids", "fleet_suspect_masalah"}, "limit": limit, "order": "id desc"})
 	if e != nil {
 		return nil, e
 	}
@@ -122,7 +123,7 @@ func (c *Client) Read(ctx context.Context, id int64) (*Service, error) {
 	if id <= 0 {
 		return nil, errors.New("invalid diagnose ID")
 	}
-	v, e := c.execute(ctx, "fleet.diagnose", "read", []Value{[]Value{id}}, map[string]Value{"fields": []Value{"id", "name", "x_service_booking_id", "contact_name", "x_vin_number", "fleet_link_ids"}})
+	v, e := c.execute(ctx, "fleet.diagnose", "read", []Value{[]Value{id}}, map[string]Value{"fields": []Value{"id", "name", "x_service_booking_id", "contact_name", "x_vin_number", "fleet_link_ids", "fleet_suspect_masalah"}})
 	if e != nil {
 		return nil, e
 	}
@@ -198,8 +199,9 @@ func (c *Client) Evidence(ctx context.Context, id int64) ([]Evidence, error) {
 	return out, nil
 }
 
-var ErrTargetNotFound = errors.New("Odoo target not found")
-var ErrEvidencePending = errors.New("Odoo evidence reconciliation pending")
+var ErrTargetNotFound = errors.New("EMICA target not found")
+var ErrEvidencePending = errors.New("EMICA evidence reconciliation pending")
+var ErrSuspectMasalahRequired = errors.New("Suspect Masalah wajib diisi di EMICA sebelum upload evidence")
 
 func (c *Client) Upload(ctx context.Context, id int64, operationID, name string, data []byte) (*Evidence, error) {
 	target, e := c.Read(ctx, id)
@@ -208,6 +210,9 @@ func (c *Client) Upload(ctx context.Context, id int64, operationID, name string,
 	}
 	if target == nil {
 		return nil, ErrTargetNotFound
+	}
+	if !target.SuspectMasalahReady {
+		return nil, ErrSuspectMasalahRequired
 	}
 	operationName := operationID + "--" + name
 	before, e := c.Evidence(ctx, id)
@@ -478,7 +483,11 @@ func services(v Value) []Service {
 		if b := many(m["x_service_booking_id"]); b != "" && b != name {
 			name = b + " · " + name
 		}
-		out = append(out, Service{ID: int64(asInt(m["id"])), Name: name, Customer: asString(m["contact_name"]), VIN: many(m["x_vin_number"]), EvidenceCount: len(asArray(m["fleet_link_ids"])), BookingID: int64(manyID(m["x_service_booking_id"]))})
+		suspectReady := true
+		if suspect, exists := m["fleet_suspect_masalah"]; exists {
+			suspectReady = strings.TrimSpace(asString(suspect)) != ""
+		}
+		out = append(out, Service{ID: int64(asInt(m["id"])), Name: name, Customer: asString(m["contact_name"]), VIN: many(m["x_vin_number"]), EvidenceCount: len(asArray(m["fleet_link_ids"])), SuspectMasalahReady: suspectReady, BookingID: int64(manyID(m["x_service_booking_id"]))})
 	}
 	return out
 }
