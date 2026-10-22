@@ -1,0 +1,10 @@
+.env
+*.local
+__pycache__/
+*.py[cod]
+bin/
+/server
+coverage.out
+.DS_Store
+.idea/
+.vscode/

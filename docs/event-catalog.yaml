@@ -1,0 +1,7 @@
+schema_version: 1
+events:
+  - {name: evidence.upload.queued.v1, version: 1, aggregate: upload, webhook_enabled: true, schema: docs/events/evidence-upload-v1.schema.json}
+  - {name: evidence.upload.succeeded.v1, version: 1, aggregate: upload, webhook_enabled: true, schema: docs/events/evidence-upload-v1.schema.json}
+  - {name: evidence.upload.failed.v1, version: 1, aggregate: upload, webhook_enabled: true, schema: docs/events/evidence-upload-v1.schema.json}
+  - {name: pat.created.v1, version: 1, aggregate: personal_access_token, webhook_enabled: true, schema: docs/events/pat-v1.schema.json}
+  - {name: pat.revoked.v1, version: 1, aggregate: personal_access_token, webhook_enabled: true, schema: docs/events/pat-v1.schema.json}
