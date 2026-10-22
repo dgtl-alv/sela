@@ -1,0 +1,44 @@
+openapi: 3.1.0
+info: {title: SELA API, version: 1.0.0}
+servers: [{url: /api/v1}]
+paths:
+  /me: {get: {security: [{bearerAuth: []}, {cookieAuth: []}], responses: {'200': {description: Current principal}, default: {$ref: '#/components/responses/Error'}}}}
+  /services: {get: {security: [{bearerAuth: [services:read]}, {cookieAuth: []}], parameters: [{name: q, in: query, required: true, schema: {type: string, minLength: 3, maxLength: 80}}, {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}], responses: {'200': {description: Service search results}, default: {$ref: '#/components/responses/Error'}}}}
+  /services/{id}: {get: {security: [{bearerAuth: [services:read]}, {cookieAuth: []}], parameters: [{$ref: '#/components/parameters/ServiceID'}], responses: {'200': {description: Service}, default: {$ref: '#/components/responses/Error'}}}}
+  /services/{id}/evidence: {get: {security: [{bearerAuth: [evidence:read]}, {cookieAuth: []}], parameters: [{$ref: '#/components/parameters/ServiceID'}], responses: {'200': {description: Validated remote evidence links}, default: {$ref: '#/components/responses/Error'}}}}
+  /services/{id}/upload-jobs: {post: {security: [{bearerAuth: [evidence:write]}, {cookieAuth: []}], parameters: [{$ref: '#/components/parameters/ServiceID'}, {$ref: '#/components/parameters/IdempotencyKey'}], requestBody: {required: true, content: {multipart/form-data: {schema: {type: object, required: [file], properties: {file: {type: string, format: binary}}}}}}, responses: {'202': {description: Upload queued}, default: {$ref: '#/components/responses/Error'}}}}
+  /upload-jobs/{id}: {get: {security: [{bearerAuth: [evidence:read]}, {cookieAuth: []}], responses: {'200': {description: Own upload status}, default: {$ref: '#/components/responses/Error'}}}}
+  /personal-access-tokens:
+    get: {security: [{cookieAuth: []}], responses: {'200': {description: Own token metadata}, default: {$ref: '#/components/responses/Error'}}}
+    post: {security: [{cookieAuth: []}], requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [name, scopes, expires_in_days], properties: {name: {type: string, maxLength: 80}, scopes: {type: array, uniqueItems: true, items: {enum: [services:read, evidence:read, evidence:write]}}, expires_in_days: {type: integer, minimum: 1, maximum: 90}}}}}}, responses: {'201': {description: Plaintext returned once}, default: {$ref: '#/components/responses/Error'}}}
+  /personal-access-tokens/{id}: {delete: {security: [{cookieAuth: []}], responses: {'204': {description: Revoked}, default: {$ref: '#/components/responses/Error'}}}}
+  /credentials/emica:
+    get: {security: [{cookieAuth: []}], responses: {'200': {description: Own credential status; secret never returned}, default: {$ref: '#/components/responses/Error'}}}
+    put: {security: [{cookieAuth: []}], requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [username, api_key], properties: {username: {type: string, minLength: 1, maxLength: 320}, api_key: {type: string, minLength: 1, maxLength: 4096}}}}}}, responses: {'200': {description: Own credential stored encrypted}, default: {$ref: '#/components/responses/Error'}}}
+    delete: {security: [{cookieAuth: []}], responses: {'204': {description: Own credential deleted}, default: {$ref: '#/components/responses/Error'}}}
+  /admin/users:
+    get: {security: [{cookieAuth: []}], responses: {'200': {description: Allowlisted users}, default: {$ref: '#/components/responses/Error'}}}
+    post: {security: [{cookieAuth: []}], requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [email, display_name, role], properties: {email: {type: string, format: email}, display_name: {type: string, minLength: 1, maxLength: 200}, role: {enum: [technician, admin]}}}}}}, responses: {'201': {description: User allowlisted}, default: {$ref: '#/components/responses/Error'}}}
+  /admin/users/{id}:
+    patch: {security: [{cookieAuth: []}], requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [role, active], properties: {role: {enum: [technician, admin]}, active: {type: boolean}}}}}}, responses: {'200': {description: User access updated}, default: {$ref: '#/components/responses/Error'}}}
+  /admin/webhook-events: {get: {security: [{cookieAuth: []}], responses: {'200': {description: Event catalog}, default: {$ref: '#/components/responses/Error'}}}}
+  /admin/webhook-endpoints:
+    get: {security: [{cookieAuth: []}], responses: {'200': {description: Endpoint list}, default: {$ref: '#/components/responses/Error'}}}
+    post: {security: [{cookieAuth: []}], responses: {'201': {description: Endpoint and one-time secret}, default: {$ref: '#/components/responses/Error'}}}
+  /admin/webhook-endpoints/{id}:
+    patch: {security: [{cookieAuth: []}], responses: {'200': {description: Updated}, default: {$ref: '#/components/responses/Error'}}}
+    delete: {security: [{cookieAuth: []}], responses: {'204': {description: Deleted}, default: {$ref: '#/components/responses/Error'}}}
+  /admin/webhook-endpoints/{id}/rotate-secret: {post: {security: [{cookieAuth: []}], responses: {'200': {description: New secret returned once}, default: {$ref: '#/components/responses/Error'}}}}
+  /admin/webhook-endpoints/{id}/deliveries: {get: {security: [{cookieAuth: []}], responses: {'200': {description: Bounded delivery history}, default: {$ref: '#/components/responses/Error'}}}}
+  /admin/webhook-deliveries/{id}/retry: {post: {security: [{cookieAuth: []}], responses: {'202': {description: Retry queued}, default: {$ref: '#/components/responses/Error'}}}}
+components:
+  parameters:
+    ServiceID: {name: id, in: path, required: true, schema: {type: integer, minimum: 1}}
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
+  securitySchemes:
+    cookieAuth: {type: apiKey, in: cookie, name: __Host-sela_session, description: Cookie mutations also require CSRF and Origin checks.}
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: SELA PAT}
+  responses:
+    Error: {description: Stable error, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  schemas:
+    Error: {type: object, required: [error], properties: {error: {type: object, required: [code, message, request_id], properties: {code: {type: string}, message: {type: string}, request_id: {type: string}, fields: {type: object, additionalProperties: {type: string}}}}}}

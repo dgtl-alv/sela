@@ -1,0 +1,9 @@
+.git
+.github
+.env
+server
+coverage.out
+README.md
+DESIGN.md
+SECURITY.md
+scripts/
