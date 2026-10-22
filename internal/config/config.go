@@ -75,7 +75,7 @@ func Load(getenv func(string) string) (Config, error) {
 		TurnstileVerifyURL: valueOr(getenv("TURNSTILE_VERIFY_URL"), "https://challenges.cloudflare.com/turnstile/v0/siteverify"), TurnstileEnabled: turnstileEnabled,
 		OdooURL: getenv("ODOO_URL"), OdooDB: getenv("ODOO_DB"),
 		SharePointHosts: split(getenv("SHAREPOINT_ALLOWED_HOSTS")), QuarantineDir: valueOr(getenv("QUARANTINE_DIR"), "/var/lib/sela/quarantine"),
-		ScannerMode: valueOr(getenv("SCANNER_MODE"), "development"), ScannerURL: getenv("SCANNER_URL"), SessionIdle: 30 * time.Minute, SessionAbsolute: 12 * time.Hour,
+		ScannerMode: valueOr(getenv("SCANNER_MODE"), "development"), ScannerURL: getenv("SCANNER_URL"), SessionIdle: 12 * time.Hour, SessionAbsolute: 12 * time.Hour,
 	}
 	if !applicationIDPattern.MatchString(cfg.ApplicationID) {
 		return Config{}, errors.New("APPLICATION_ID must use lowercase letters, numbers, and hyphens")

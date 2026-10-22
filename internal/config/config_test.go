@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"strings"
 	"testing"
+	"time"
 )
 
 func env(values map[string]string) func(string) string {
@@ -18,6 +19,16 @@ func TestLoadDevelopment(t *testing.T) {
 		t.Fatalf("unexpected config: %+v", c)
 	}
 }
+func TestDefaultSessionLastsTwelveHours(t *testing.T) {
+	cfg, err := Load(env(map[string]string{"APPLICATION_ID": "sela"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SessionIdle != 12*time.Hour || cfg.SessionAbsolute != 12*time.Hour {
+		t.Fatalf("session idle=%v absolute=%v", cfg.SessionIdle, cfg.SessionAbsolute)
+	}
+}
+
 func TestProductionRejectsMissing(t *testing.T) {
 	_, e := Load(env(map[string]string{"APP_ENV": "production", "APPLICATION_ID": "sela"}))
 	if e == nil {
