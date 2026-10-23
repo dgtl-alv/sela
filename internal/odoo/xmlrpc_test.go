@@ -116,6 +116,29 @@ func TestEvidenceMatchesOdooNormalizedOperationID(t *testing.T) {
 	}
 }
 
+func TestReadUsesValidatedBikeIssueWithSuspect(t *testing.T) {
+	client, err := New(Config{URL: "https://odoo.test", DB: "d", Username: "user", APIKey: "secret"}, &http.Client{Transport: rt(func(r *http.Request) (*http.Response, error) {
+		bodyBytes, _ := io.ReadAll(r.Body)
+		body := string(bodyBytes)
+		response := `<int>7</int>`
+		switch {
+		case strings.Contains(body, "<string>fleet.diagnose</string>"):
+			response = `<array><data><value><struct><member><name>id</name><value><int>62755</int></value></member><member><name>name</name><value><string>SD/TEST</string></value></member><member><name>x_service_tag_his_ids</name><value><array><data><value><int>9001</int></value></data></array></value></member><member><name>fleet_suspect_masalah</name><value><boolean>0</boolean></value></member></struct></value></data></array>`
+		case strings.Contains(body, "<string>x.service.tag.his</string>"):
+			response = `<array><data><value><struct><member><name>fleet_diagnose_id</name><value><array><data><value><int>62755</int></value><value><string>SD/TEST</string></value></data></array></value></member><member><name>validate_status</name><value><string>valid</string></value></member><member><name>x_suspect_list_ids</name><value><array><data><value><int>42</int></value></data></array></value></member></struct></value></data></array>`
+		}
+		xmlBody := `<?xml version="1.0"?><methodResponse><params><param><value>` + response + `</value></param></params></methodResponse>`
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(xmlBody)), Header: http.Header{}}, nil
+	})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := client.Read(context.Background(), 62755)
+	if err != nil || service == nil || !service.SuspectMasalahReady {
+		t.Fatalf("service=%+v error=%v", service, err)
+	}
+}
+
 func TestUploadRejectsMissingSuspectMasalahBeforeWrite(t *testing.T) {
 	wrote := false
 	calls := 0

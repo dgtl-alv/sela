@@ -57,6 +57,7 @@ type Service struct {
 	EvidenceCount       int    `json:"evidence_count"`
 	SuspectMasalahReady bool   `json:"suspect_masalah_ready"`
 	BookingID           int64  `json:"-"`
+	bikeIssueIDs        []int
 }
 type Evidence struct {
 	ID   int64  `json:"id"`
@@ -94,11 +95,14 @@ func (c *Client) Search(ctx context.Context, q string, limit int) ([]Service, er
 	if len(bookingIDs) > 0 {
 		domain = []Value{"|", []Value{"name", "ilike", q}, []Value{"x_service_booking_id", "in", bookingIDs}}
 	}
-	v, e := c.execute(ctx, "fleet.diagnose", "search_read", []Value{domain}, map[string]Value{"fields": []Value{"id", "name", "x_service_booking_id", "contact_name", "x_vin_number", "fleet_link_ids", "fleet_suspect_masalah"}, "limit": limit, "order": "id desc"})
+	v, e := c.execute(ctx, "fleet.diagnose", "search_read", []Value{domain}, map[string]Value{"fields": []Value{"id", "name", "x_service_booking_id", "contact_name", "x_vin_number", "fleet_link_ids", "fleet_suspect_masalah", "x_service_tag_his_ids"}, "limit": limit, "order": "id desc"})
 	if e != nil {
 		return nil, e
 	}
 	items := services(v)
+	if e := c.addBikeIssueDetails(ctx, items); e != nil {
+		return nil, e
+	}
 	if e := c.addBookingDetails(ctx, items); e != nil {
 		return nil, e
 	}
@@ -123,7 +127,7 @@ func (c *Client) Read(ctx context.Context, id int64) (*Service, error) {
 	if id <= 0 {
 		return nil, errors.New("invalid diagnose ID")
 	}
-	v, e := c.execute(ctx, "fleet.diagnose", "read", []Value{[]Value{id}}, map[string]Value{"fields": []Value{"id", "name", "x_service_booking_id", "contact_name", "x_vin_number", "fleet_link_ids", "fleet_suspect_masalah"}})
+	v, e := c.execute(ctx, "fleet.diagnose", "read", []Value{[]Value{id}}, map[string]Value{"fields": []Value{"id", "name", "x_service_booking_id", "contact_name", "x_vin_number", "fleet_link_ids", "fleet_suspect_masalah", "x_service_tag_his_ids"}})
 	if e != nil {
 		return nil, e
 	}
@@ -131,11 +135,44 @@ func (c *Client) Read(ctx context.Context, id int64) (*Service, error) {
 	if len(s) != 1 {
 		return nil, nil
 	}
+	if e := c.addBikeIssueDetails(ctx, s); e != nil {
+		return nil, e
+	}
 	if e := c.addBookingDetails(ctx, s); e != nil {
 		return nil, e
 	}
 	return &s[0], nil
 }
+func (c *Client) addBikeIssueDetails(ctx context.Context, items []Service) error {
+	ids := make([]Value, 0)
+	for _, item := range items {
+		for _, id := range item.bikeIssueIDs {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		for i := range items {
+			items[i].SuspectMasalahReady = false
+		}
+		return nil
+	}
+	v, err := c.execute(ctx, "x.service.tag.his", "read", []Value{ids}, map[string]Value{"fields": []Value{"fleet_diagnose_id", "validate_status", "x_suspect_list_ids"}})
+	if err != nil {
+		return err
+	}
+	readyByDiagnose := map[int]bool{}
+	for _, raw := range asArray(v) {
+		row, _ := raw.(map[string]Value)
+		if asString(row["validate_status"]) == "valid" && len(asArray(row["x_suspect_list_ids"])) > 0 {
+			readyByDiagnose[manyID(row["fleet_diagnose_id"])] = true
+		}
+	}
+	for i := range items {
+		items[i].SuspectMasalahReady = readyByDiagnose[int(items[i].ID)]
+	}
+	return nil
+}
+
 func (c *Client) addBookingDetails(ctx context.Context, items []Service) error {
 	ids := []Value{}
 	for _, item := range items {
@@ -271,7 +308,7 @@ func (c *Client) safeLink(raw string) bool {
 	return false
 }
 func (c *Client) execute(ctx context.Context, model, method string, args []Value, kw map[string]Value) (Value, error) {
-	allowed := map[string]map[string]bool{"fleet.diagnose": {"search_read": true, "read": true, "write": true}, "fleet.link": {"read": true}, "x.service.booking": {"search_read": true, "read": true}}
+	allowed := map[string]map[string]bool{"fleet.diagnose": {"search_read": true, "read": true, "write": true}, "fleet.link": {"read": true}, "x.service.booking": {"search_read": true, "read": true}, "x.service.tag.his": {"read": true}}
 	if !allowed[model][method] {
 		return nil, errors.New("unsupported Odoo operation")
 	}
@@ -487,11 +524,21 @@ func services(v Value) []Service {
 		if suspect, exists := m["fleet_suspect_masalah"]; exists {
 			suspectReady = strings.TrimSpace(asString(suspect)) != ""
 		}
-		out = append(out, Service{ID: int64(asInt(m["id"])), Name: name, Customer: asString(m["contact_name"]), VIN: many(m["x_vin_number"]), EvidenceCount: len(asArray(m["fleet_link_ids"])), SuspectMasalahReady: suspectReady, BookingID: int64(manyID(m["x_service_booking_id"]))})
+		out = append(out, Service{ID: int64(asInt(m["id"])), Name: name, Customer: asString(m["contact_name"]), VIN: many(m["x_vin_number"]), EvidenceCount: len(asArray(m["fleet_link_ids"])), SuspectMasalahReady: suspectReady, BookingID: int64(manyID(m["x_service_booking_id"])), bikeIssueIDs: intIDs(m["x_service_tag_his_ids"])})
 	}
 	return out
 }
 func asArray(v Value) []Value { a, _ := v.([]Value); return a }
+func intIDs(v Value) []int {
+	values := asArray(v)
+	ids := make([]int, 0, len(values))
+	for _, value := range values {
+		if id := asInt(value); id > 0 {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
 func asInt(v Value) int       { i, _ := v.(int); return i }
 func asString(v Value) string { s, _ := v.(string); return s }
 func manyID(v Value) int {
