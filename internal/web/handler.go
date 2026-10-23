@@ -520,7 +520,7 @@ func (a *App) browserUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !target.SuspectMasalahReady {
-		a.renderError(w, r, 409, "Suspect Masalah wajib diisi di EMICA sebelum upload evidence")
+		a.renderError(w, r, 409, "Validasi minimal satu Bike Issue dengan Suspect Masalah terisi di EMICA, lalu muat ulang halaman")
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, upload.MaxRequestBytes)

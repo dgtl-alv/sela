@@ -5,6 +5,17 @@ import (
 	"testing"
 )
 
+func TestServiceUploadBlockerExplainsBikeIssueValidation(t *testing.T) {
+	body, err := assets.ReadFile("templates/service.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Validasi minimal satu Bike Issue dengan Suspect Masalah terisi di EMICA, lalu muat ulang halaman."
+	if !strings.Contains(string(body), want) {
+		t.Fatalf("service upload blocker missing %q", want)
+	}
+}
+
 func TestServiceUploadOffersCameraAndGalleryInputs(t *testing.T) {
 	body, err := assets.ReadFile("templates/service.html")
 	if err != nil {

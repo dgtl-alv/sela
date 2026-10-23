@@ -238,7 +238,7 @@ func (c *Client) Evidence(ctx context.Context, id int64) ([]Evidence, error) {
 
 var ErrTargetNotFound = errors.New("EMICA target not found")
 var ErrEvidencePending = errors.New("EMICA evidence reconciliation pending")
-var ErrSuspectMasalahRequired = errors.New("Suspect Masalah wajib diisi di EMICA sebelum upload evidence")
+var ErrSuspectMasalahRequired = errors.New("Validasi minimal satu Bike Issue dengan Suspect Masalah terisi di EMICA sebelum upload evidence")
 
 func (c *Client) Upload(ctx context.Context, id int64, operationID, name string, data []byte) (*Evidence, error) {
 	target, e := c.Read(ctx, id)
